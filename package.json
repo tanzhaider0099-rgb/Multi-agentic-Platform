@@ -1,0 +1,64 @@
+{
+  "name": "hydra",
+  "productName": "Hydra",
+  "version": "1.0.0",
+  "description": "Local-first research intelligence desk: multi-format ingestion, fact-checking, and retrieval for journalists and researchers.",
+  "main": "main.js",
+  "author": "Tanzin",
+  "license": "UNLICENSED",
+  "scripts": {
+    "postinstall": "electron-builder install-app-deps",
+    "start": "electron .",
+    "dist": "electron-builder --win nsis",
+    "dist:dir": "electron-builder --win dir"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "electron-store": "^8.2.0",
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.1",
+    "pdf-parse": "^1.1.1",
+    "pdfkit": "^0.15.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.hydra.app",
+    "productName": "Hydra",
+    "directories": {
+      "output": "release"
+    },
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hydra"
+    }
+  }
+}

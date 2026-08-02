@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;">
+<title>Hydra</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div id="onboarding" class="modal-overlay hidden">
+  <div class="modal onboarding-modal">
+    <div class="stamp-badge stamp-badge--large" aria-hidden="true"><span>NEW</span></div>
+    <h1>Welcome to Hydra</h1>
+    <p class="muted">Four things, in order. Each works without the next — the app stays usable even if you stop halfway.</p>
+    <ol class="onboarding-steps">
+      <li>
+        <strong>1. Create or open a project</strong>
+        <p class="muted">A project is a folder on your computer. Everything you ingest for it — raw files, processed notes, and its database — lives inside that one folder.</p>
+        <div class="row">
+          <button id="ob-create-project" class="btn">Create new project…</button>
+          <button id="ob-open-project" class="btn btn-secondary">Open existing folder…</button>
+        </div>
+        <span id="ob-project-status" class="muted small"></span>
+      </li>
+      <li>
+        <strong>2. Add an OpenAI key</strong>
+        <p class="muted">Powers OCR, transcription, and embeddings by default. Without it, ingestion still stores raw text, but search won't work — unless you switch to offline Ollama in Settings.</p>
+        <input id="ob-openai-key" type="password" placeholder="sk-…" class="input" />
+        <button id="ob-test-openai" class="btn btn-secondary">Test</button>
+        <span id="ob-openai-status" class="status-text"></span>
+      </li>
+      <li>
+        <strong>3. Choose your "brain"</strong>
+        <p class="muted">The AI that writes research answers. Default is Anthropic. Add a key below, or switch to a fully offline model later in Settings → Providers.</p>
+        <input id="ob-anthropic-key" type="password" placeholder="sk-ant-…" class="input" />
+        <button id="ob-test-anthropic" class="btn btn-secondary">Test</button>
+        <span id="ob-anthropic-status" class="status-text"></span>
+      </li>
+    </ol>
+    <div class="onboarding-actions">
+      <button id="ob-finish" class="btn btn-primary">Start using Hydra</button>
+    </div>
+    <p class="muted small">Everything here can be changed later in Settings.</p>
+  </div>
+</div>
+
+<div id="project-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>Projects</h2>
+    <p class="muted small">A project is a folder. Ingested files, notes, and the database for that project all live inside it — nothing is shared between projects.</p>
+    <div class="row">
+      <button id="pm-create" class="btn btn-primary">+ New project</button>
+      <button id="pm-open" class="btn btn-secondary">Open existing folder…</button>
+    </div>
+    <div id="pm-list" class="log-list" style="margin-top:14px;"></div>
+    <div class="onboarding-actions"><button id="pm-close" class="btn btn-secondary">Close</button></div>
+  </div>
+</div>
+
+<div id="error-modal" class="modal-overlay hidden">
+  <div class="modal error-modal">
+    <h2 id="error-title">Something went wrong</h2>
+    <p id="error-message" class="muted"></p>
+    <div class="onboarding-actions">
+      <button id="error-open-log" class="btn btn-secondary">Open log file</button>
+      <button id="error-dismiss" class="btn btn-primary">Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-mark">H</div>
+    <div>
+      <div class="brand-title">Hydra</div>
+      <div class="brand-sub muted small">Local research desk</div>
+    </div>
+  </div>
+  <nav class="folder-tabs" id="nav-tabs">
+    <button class="tab active" data-view="dashboard" title="Overview of this project"><span class="tab-icon">◧</span> Dashboard</button>
+    <button class="tab" data-view="ingest" title="Add files, web pages, or text"><span class="tab-icon">⬇</span> Ingest</button>
+    <button class="tab" data-view="search" title="Ask a research question"><span class="tab-icon">◎</span> Ask</button>
+    <button class="tab" data-view="entities" title="People & organizations you're tracking"><span class="tab-icon">▤</span> Entities</button>
+    <button class="tab" data-view="graph" title="Knowledge graph of entity relationships"><span class="tab-icon">◈</span> Graph</button>
+    <button class="tab" data-view="export" title="Export data as CSV / Excel / PDF"><span class="tab-icon">⇪</span> Export</button>
+    <button class="tab" data-view="settings" title="Providers, prompts, and connections"><span class="tab-icon">⚙</span> Settings</button>
+  </nav>
+  <button id="project-switcher" class="project-pill" title="Switch or manage projects">
+    <span class="project-pill-dot"></span>
+    <span id="project-pill-name">No project open</span>
+    <span class="muted small">▾</span>
+  </button>
+</header>
+
+<main id="app-main">
+
+  <section id="view-dashboard" class="view active">
+    <h1>Dashboard</h1>
+    <p class="muted">A quick read of what's in <span id="dash-project-name">this project</span> right now.</p>
+    <div class="stat-grid" id="stat-grid"></div>
+    <h2>Recently ingested</h2>
+    <div id="recent-logs" class="log-list"></div>
+  </section>
+
+  <section id="view-ingest" class="view">
+    <h1>Ingest</h1>
+    <p class="muted">Add a file, a web page, or pasted text. Raw files are copied into <code>01_Raw_Sources</code>; a cleaned, tagged note is written to <code>02_Processed_Notes</code> in your current project folder.</p>
+
+    <div class="card">
+      <h3>From a file <span class="help-tip" title="Supported: images (OCR), audio/video under 25MB (transcription), PDF, PowerPoint (.pptx), Excel/CSV, and plain text/Markdown.">?</span></h3>
+      <p class="muted small">Images (OCR) · Audio/video &lt;25MB (transcription) · PDF · PowerPoint (.pptx) · Excel/CSV · Text/Markdown</p>
+      <button id="ingest-pick-file" class="btn btn-primary">Choose file…</button>
+      <span id="ingest-file-name" class="muted small"></span>
+    </div>
+
+    <div class="card">
+      <h3>From a web page</h3>
+      <div class="row">
+        <input id="ingest-url" type="text" class="input" placeholder="https://example.com/article" />
+        <button id="ingest-run-url" class="btn btn-primary">Fetch &amp; ingest</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Paste text</h3>
+      <input id="ingest-text-title" type="text" class="input" placeholder="Optional title" />
+      <textarea id="ingest-text-body" class="textarea" rows="6" placeholder="Paste the text to ingest…"></textarea>
+      <button id="ingest-run-text" class="btn btn-primary">Ingest text</button>
+    </div>
+
+    <div id="ingest-result" class="ingest-result"></div>
+    <div id="ingest-progress" class="progress-line hidden">Working — extracting, classifying, embedding, and writing your note…</div>
+  </section>
+
+  <section id="view-search" class="view">
+    <h1>Ask</h1>
+    <p class="muted">Ask a question of everything you've ingested in this project. Answers are grounded only in your own stored entries.</p>
+    <div class="row">
+      <input id="search-input" type="text" class="input" placeholder="What do the logs say about…" />
+      <button id="search-run" class="btn btn-primary">Ask</button>
+    </div>
+    <div id="search-progress" class="progress-line hidden">Searching your database…</div>
+    <div id="search-answer" class="answer-block"></div>
+    <div id="search-sources" class="log-list"></div>
+    <div id="search-export-row" class="row hidden">
+      <button id="search-export-pdf" class="btn btn-secondary">Export PDF</button>
+      <button id="search-export-csv" class="btn btn-secondary">Export sources CSV</button>
+    </div>
+  </section>
+
+  <section id="view-entities" class="view">
+    <h1>Entities</h1>
+    <p class="muted">Public-record profiles only — role, organization, and sourced claims. No location or security-tracking fields.</p>
+    <div class="entities-layout">
+      <div class="entities-list-col">
+        <button id="entity-new" class="btn btn-secondary">+ New entity</button>
+        <div id="entities-list" class="log-list"></div>
+      </div>
+      <div class="entities-detail-col">
+        <div class="card">
+          <input id="entity-name" type="text" class="input" placeholder="Name" />
+          <div class="row">
+            <input id="entity-role" type="text" class="input" placeholder="Role / classification" />
+            <input id="entity-org" type="text" class="input" placeholder="Organization" />
+          </div>
+          <textarea id="entity-summary" class="textarea" rows="3" placeholder="Executive summary…"></textarea>
+          <textarea id="entity-good" class="textarea" rows="3" placeholder="Documented & verified facts…"></textarea>
+          <textarea id="entity-controversial" class="textarea" rows="3" placeholder="Disputed / under scrutiny (sourced only)…"></textarea>
+          <div class="row">
+            <input id="entity-national" type="text" class="input" placeholder="National relations" />
+            <input id="entity-international" type="text" class="input" placeholder="International relations" />
+          </div>
+          <div class="row">
+            <button id="entity-save" class="btn btn-primary">Save</button>
+            <button id="entity-delete" class="btn btn-danger">Delete</button>
+            <button id="entity-export-pdf" class="btn btn-secondary">Export PDF</button>
+            <button id="entity-wiki" class="btn btn-secondary">Generate wiki page</button>
+            <button id="entity-view-graph" class="btn btn-secondary">View in graph</button>
+          </div>
+          <div id="entity-wiki-status" class="muted small"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-graph" class="view">
+    <h1>Knowledge Graph</h1>
+    <p class="muted">Entities and the relationships between them, built automatically as sources are ingested — either an AI-labeled relation (e.g. WORKS_FOR) or a generic "co-mentioned" edge when two entities appear in the same source. Drag nodes; scroll to zoom.</p>
+    <div class="row">
+      <input id="graph-focus" type="text" class="input" placeholder="Focus on one entity (leave blank for the full graph)" />
+      <button id="graph-load-full" class="btn btn-secondary">Show full graph</button>
+      <button id="graph-load-focus" class="btn btn-primary">Focus</button>
+    </div>
+    <div class="graph-canvas-wrap">
+      <canvas id="graph-canvas" width="900" height="560"></canvas>
+    </div>
+    <div id="graph-empty" class="muted small hidden">No relationships yet — entities that appear together in an ingested source will connect automatically.</div>
+    <div id="graph-node-detail" class="card hidden"></div>
+  </section>
+
+  <section id="view-export" class="view">
+    <h1>Export</h1>
+    <p class="muted">Export everything ingested so far in this project.</p>
+    <div class="card">
+      <h3>PDF style</h3>
+      <div class="row">
+        <label class="radio-label"><input type="radio" name="pdf-template" value="simple" checked /> Simple</label>
+        <label class="radio-label"><input type="radio" name="pdf-template" value="branded" /> Branded (Hydra header/footer)</label>
+      </div>
+      <p class="muted small">This choice applies to PDF exports from the Ask and Entities tabs too.</p>
+    </div>
+    <div class="row">
+      <button id="export-all-csv" class="btn btn-primary">Export all logs — CSV</button>
+      <button id="export-all-xlsx" class="btn btn-primary">Export all logs — Excel</button>
+    </div>
+    <div id="export-status" class="muted small"></div>
+  </section>
+
+  <section id="view-settings" class="view">
+    <h1>Settings</h1>
+    <p class="muted">Projects, AI providers, connections, and the editable prompts that drive every AI call.</p>
+
+    <div class="card">
+      <h3>Projects</h3>
+      <div class="row">
+        <span id="settings-active-project" class="muted small">No project open</span>
+        <button id="settings-manage-projects" class="btn btn-secondary">Manage projects…</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>AI Providers <span class="help-tip" title="Pick which AI does each job. Anthropic/OpenAI need an API key and internet. Ollama runs fully offline on your own machine. Custom CLI lets you plug in any local tool.">?</span></h3>
+
+      <div class="provider-row">
+        <label>Brain <span class="muted small">(writes research answers)</span></label>
+        <select id="provider-brain" class="input">
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI</option>
+          <option value="ollama">Ollama — offline, local model</option>
+          <option value="cli">Custom CLI command</option>
+        </select>
+      </div>
+      <div class="provider-row">
+        <label>Embeddings <span class="muted small">(powers search)</span></label>
+        <select id="provider-embedding" class="input">
+          <option value="openai">OpenAI</option>
+          <option value="ollama">Ollama — offline, local model</option>
+        </select>
+      </div>
+      <div class="provider-row">
+        <label>Transcription <span class="muted small">(audio/video)</span></label>
+        <select id="provider-transcription" class="input">
+          <option value="openai">OpenAI Whisper</option>
+          <option value="elevenlabs">ElevenLabs</option>
+        </select>
+      </div>
+
+      <div id="ollama-fields" class="hidden">
+        <label class="prompt-label">Ollama host</label>
+        <div class="row">
+          <input id="ollama-host" type="text" class="input" placeholder="http://localhost:11434" />
+          <button id="test-ollama" class="btn btn-secondary">Test</button>
+          <span id="status-ollama" class="status-text"></span>
+        </div>
+        <div class="row">
+          <input id="ollama-brain-model" type="text" class="input" placeholder="Brain model, e.g. llama3.1" />
+          <input id="ollama-embed-model" type="text" class="input" placeholder="Embedding model, e.g. nomic-embed-text" />
+        </div>
+      </div>
+
+      <div id="cli-fields" class="hidden">
+        <label class="prompt-label">Custom CLI command <span class="muted small">— the prompt is piped to its stdin, the reply is read from stdout</span></label>
+        <input id="cli-command" type="text" class="input" placeholder="e.g. my-local-llm --quiet" />
+      </div>
+
+      <button id="providers-save" class="btn btn-primary">Save providers</button>
+    </div>
+
+    <div class="card">
+      <h3>Connections</h3>
+      <div class="conn-row">
+        <label>OpenAI key</label>
+        <input id="settings-openai-key" type="password" class="input" placeholder="sk-…" />
+        <button data-test="openai" class="btn btn-secondary test-btn">Test</button>
+        <span id="status-openai" class="status-text"></span>
+      </div>
+      <div class="conn-row">
+        <label>Anthropic key</label>
+        <input id="settings-anthropic-key" type="password" class="input" placeholder="sk-ant-…" />
+        <button data-test="anthropic" class="btn btn-secondary test-btn">Test</button>
+        <span id="status-anthropic" class="status-text"></span>
+      </div>
+      <div class="conn-row">
+        <label>Tavily key <span class="muted small">(live fact-checking, optional)</span></label>
+        <input id="settings-tavily-key" type="password" class="input" placeholder="tvly-…" />
+        <button data-test="tavily" class="btn btn-secondary test-btn">Test</button>
+        <span id="status-tavily" class="status-text"></span>
+      </div>
+      <div class="conn-row">
+        <label>ElevenLabs key <span class="muted small">(optional transcription provider)</span></label>
+        <input id="settings-elevenlabs-key" type="password" class="input" placeholder="…" />
+        <button data-test="elevenlabs" class="btn btn-secondary test-btn">Test</button>
+        <span id="status-elevenlabs" class="status-text"></span>
+      </div>
+      <button id="settings-save-keys" class="btn btn-primary">Save connections</button>
+    </div>
+
+    <div class="card">
+      <h3>MCP Servers <span class="tag tag-neutral">Scaffold — not yet wired into Ask</span></h3>
+      <p class="muted small">Register MCP server endpoints here for future use. Right now this list is saved but not queried during Ask — see the README for status.</p>
+      <div id="mcp-list"></div>
+      <div class="row">
+        <input id="mcp-name" type="text" class="input" placeholder="Name" />
+        <input id="mcp-url" type="text" class="input" placeholder="Server URL" />
+        <button id="mcp-add" class="btn btn-secondary">Add</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Prompts</h3>
+      <p class="muted small">These control every AI call the app makes. Edit freely — "Reset to defaults" brings back the originals.</p>
+      <label class="prompt-label">System prompt (research answer format)</label>
+      <textarea id="prompt-system" class="textarea mono" rows="10"></textarea>
+      <label class="prompt-label">Rewrite prompt (raw text → clean note)</label>
+      <textarea id="prompt-rewrite" class="textarea mono" rows="4"></textarea>
+      <label class="prompt-label">Fact-check prompt</label>
+      <textarea id="prompt-factcheck" class="textarea mono" rows="6"></textarea>
+      <label class="prompt-label">Entity summary prompt</label>
+      <textarea id="prompt-entity" class="textarea mono" rows="4"></textarea>
+      <label class="prompt-label">Image OCR context prompt</label>
+      <textarea id="prompt-ocr" class="textarea mono" rows="3"></textarea>
+      <div class="row">
+        <button id="prompts-save" class="btn btn-primary">Save prompts</button>
+        <button id="prompts-reset" class="btn btn-secondary">Reset to defaults</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Troubleshooting</h3>
+      <button id="open-log-btn" class="btn btn-secondary">Open log file</button>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
